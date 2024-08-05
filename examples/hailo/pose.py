@@ -7,7 +7,7 @@ from picamera2.devices import Hailo
 from pose_utils import postproc_yolov8_pose
 
 parser = argparse.ArgumentParser(description='Pose estimation using Hailo')
-parser.add_argument('-m', '--model', help="HEF file path", default="yolov8s_h8l_pose.hef")
+parser.add_argument('-m', '--model', help="HEF file path", default="/usr/share/hailo-models/yolov8s_pose_h8l_pi.hef")
 args = parser.parse_args()
 
 NOSE, L_EYE, R_EYE, L_EAR, R_EAR, L_SHOULDER, R_SHOULDER, L_ELBOW, R_ELBOW, \
