@@ -4,7 +4,6 @@ from concurrent.futures import Future
 from functools import partial
 import numpy as np
 
-
 class Hailo:
     def __init__(self, hef_path, batch_size=None, output_type='FLOAT32'):
         """
@@ -64,19 +63,25 @@ class Hailo:
             future._has_had_error = True
             future.set_exception(completion_info.exception)
         else:
-            # When there's more than one output, we return them all in a dictionary with the layer name,
-            # otherwise we merely return the single output on its own.
             if self.num_outputs <= 1:
-                this_result = bindings.output().get_buffer()
-            else:
-                # Don't know why I need an extra expand_dims here. Anyone?
-                this_result = {k: np.expand_dims(v.get_buffer(), axis=0) for k, v in bindings._outputs.items()}
-            future._intermediate_result.append(this_result)
-            if last:
-                # On the last callback for this batch, signal to the user that the future is ready.
+                # Only one output. Return the output directly.
                 if self.batch_size is None:
-                    # If the user did not request batches, remove the list that wraps the single result.
-                    future._intermediate_result = future._intermediate_result[0]
+                    # No batching. Return this single output on its own.
+                    future._intermediate_result = bindings.output().get_buffer()
+                else:
+                    # Return a list containing an output for each item in the batch.
+                    future._intermediate_result.append(bindings.output().get_buffer())
+            else:
+                # Multiple outputs. Return a dictionary of outputs keyed on the layer name.
+                if self.batch_size is None:
+                    # No batching. Use a single output as the value for each key.
+                    for name in bindings._output_names:
+                        future._intermediate_result[name] = bindings.output(name).get_buffer()
+                else:
+                    # Each key contains a list of outputs, one per item in the batch.
+                    for name in bindings._output_names:
+                        future._intermediate_result[name].append(bindings.output(name).get_buffer())
+            if last:
                 future.set_result(future._intermediate_result)
 
     def _get_vstream_info(self):
@@ -126,8 +131,11 @@ class Hailo:
             input_data = np.expand_dims(input_data, axis=0)
 
         future = Future()
-        future._intermediate_result = []
         future._has_had_error = False
+        if self.num_outputs <= 1:
+            future._intermediate_result = []
+        else:
+            future._intermediate_result = {output.name: [] for output in self.infer_model.outputs}
 
         for i, frame in enumerate(input_data):
             last = i == len(input_data) - 1

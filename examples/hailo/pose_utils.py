@@ -13,6 +13,17 @@ kwargs = {
         }
 
 def postproc_yolov8_pose(num_of_classes, raw_detections, img_size):
+    # The input is a dictionary of outputs for each layer. For each layer we may have:
+    #     A single numpy array, if batching was not used.
+    #     A list of numpy arrays, when a batch size was specified.
+    # We convert the "list" into an extra numpy dimensions, which is what the code here expects.
+    for layer, output in raw_detections.items():
+        if not isinstance(output, list):
+            raw_detections[layer] = np.expand_dims(output, axis=0)
+        elif len(output) == 1:
+            raw_detections[layer] = np.expand_dims(output[0], axis=0)
+        else:
+            raise RuntimeError("Pose post-processing only supports a batch size of 1")
 
     kwargs['img_dims'] = img_size
     raw_detections_keys = list(raw_detections.keys())
@@ -21,6 +32,7 @@ def postproc_yolov8_pose(num_of_classes, raw_detections, img_size):
     detection_output_channels = (kwargs['anchors']['regression_length'] + 1) * 4 # (regression length + 1) * num_coordinates
     keypoints = 51
 
+    # The following assumes that the batch size is 1:
     endnodes = [raw_detections[layer_from_shape[1, 20, 20, detection_output_channels]],
                 raw_detections[layer_from_shape[1, 20, 20, num_of_classes]],
                 raw_detections[layer_from_shape[1, 20, 20, keypoints]],
